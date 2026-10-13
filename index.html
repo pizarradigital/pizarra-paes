@@ -1,0 +1,352 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pizarra Ensayo PAES - Doble Pantalla</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@500;700&family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-pizarra:  #05070a;
+    --bg-interfaz: #111622;
+    --border:      #222b3d;
+    --enunciado:   #f59e0b;
+    --paso-viejo:  #cbd5e1;
+    --paso-activo: #38bdf8;
+    --resultado:   #4ade80;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { width:100%; height:100vh; background: var(--bg-pizarra); color: #f8fafc; font-family: 'Nunito', sans-serif; overflow: hidden; }
+  .pizarra-grid { display: grid; grid-template-rows: 68px 1fr 58px; height: 100vh; width: 100vw; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; background: var(--bg-interfaz); border-bottom: 2px solid var(--border); gap: 1rem; z-index: 100; }
+  .titulo-pizarra { font-size: 1.3rem; font-weight: 900; color: var(--paso-viejo); white-space: nowrap; }
+  .header-centro { display: flex; align-items: center; gap: 0.8rem; flex: 1; justify-content: center; }
+  .select-masivo { background: var(--bg-pizarra); color: var(--enunciado); border: 2px solid var(--enunciado); padding: 0.4rem 0.8rem; border-radius: 8px; font-size: 1rem; font-weight: 900; cursor: pointer; outline: none; max-width: 450px; }
+  .contador { font-family: 'Fira Code', monospace; color: #64748b; font-size: 0.95rem; white-space: nowrap; }
+  .main-content { display: flex; width: 100%; height: 100%; overflow: hidden; }
+  .math-panel { flex: 1; height: 100%; padding: 2rem 2.5rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1rem; scroll-behavior: smooth; transition: all 0.4s ease; cursor: pointer; }
+  .linea-matematica { width: 100%; font-size: 1.1rem; color: var(--paso-viejo); text-align: center; padding: 0.2rem 0; transition: all 0.3s; }
+  .linea-matematica.enunciado { color: var(--enunciado); border-bottom: 1px dashed var(--border); padding-bottom: 1rem; margin-bottom: 0.5rem; }
+  .linea-matematica.es-activo { color: var(--paso-activo); transform: scale(1.04); filter: drop-shadow(0 0 8px rgba(56,189,248,0.3)); }
+  .linea-matematica.es-resultado { color: var(--resultado); }
+  .katex-display { margin: 0.1em 0 !important; } .katex { font-size: 1.8rem !important; }
+  
+  .right-panel { width: 45%; height: 100%; background: #0a0e14; border-left: 2px solid var(--border); position: relative; overflow: hidden; transition: all 0.4s ease; }
+  .right-panel.hidden { width: 0%; opacity: 0; border-left-width: 0; pointer-events: none; }
+  .math-panel.full { flex: 1 1 100%; max-width: 100%; }
+  
+  .btn-expand { position: absolute; top: 15px; right: 15px; background: var(--bg-interfaz); color: var(--paso-activo); border: 2px solid var(--paso-activo); border-radius: 8px; padding: 6px 12px; font-weight: 900; cursor: pointer; z-index: 20; font-size: 1.2rem; transition: all 0.2s; }
+  .btn-expand:hover { background: var(--paso-activo); color: var(--bg-pizarra); }
+  
+  .graph-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  #canvas-svg { width: 95%; height: 95%; }
+  
+  .footer { display: flex; align-items: center; justify-content: space-between; padding: 0 2rem; background: var(--bg-interfaz); border-top: 2px solid var(--border); }
+  .btn-nav { background: var(--bg-pizarra); border: 2px solid var(--border); color: #fff; padding: 0.5rem 1.5rem; border-radius: 8px; font-weight: 900; cursor: pointer; font-size: 1rem; transition: all 0.2s; }
+  .btn-nav:hover:not(:disabled) { border-color: var(--paso-activo); color: var(--paso-activo); }
+  .btn-nav:disabled { opacity: 0.3; cursor: not-allowed; }
+  .barra-progreso { position: fixed; bottom: 0; left: 0; height: 4px; background: var(--paso-activo); transition: width 0.3s; z-index: 1000; }
+  
+  @media (max-width: 900px) { .main-content{flex-direction:column} .right-panel{width:100%; height:40vh} .math-panel{padding:1rem} }
+</style>
+</head>
+<body>
+<div class="pizarra-grid">
+  <div class="header">
+    <div class="titulo-pizarra">📓 PIZARRA PAES DUAL</div>
+    <div class="header-centro">
+      <select id="ejercicioSelect" class="select-masivo" onchange="cambiarEjercicio(this.value)"></select>
+    </div>
+    <div class="contador">Paso <span id="numActual" style="color:var(--paso-activo)">1</span>/<span id="numTotal">1</span></div>
+  </div>
+  <div class="main-content">
+    <div class="math-panel" id="mathPanel" onclick="siguiente()"></div>
+    <div class="right-panel" id="rightPanel">
+      <button id="btnExpandPanel" class="btn-expand" onclick="togglePanel(event)" title="Mostrar/Ocultar Gráfico">⇔</button>
+      <div class="graph-container" id="graphContainer">
+        <svg id="canvas-svg" viewBox="0 0 400 400"></svg>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <button class="btn-nav" id="btnPrev" onclick="anterior(); event.stopPropagation();">◀ ANTERIOR</button>
+    <div style="color:#475569;font-size:0.85rem; font-weight:700;">Colchagua Siglo 21 · Sistema Tótem PAES</div>
+    <button class="btn-nav" id="btnNext" onclick="siguiente(); event.stopPropagation();">SIGUIENTE ▶</button>
+  </div>
+</div>
+<div class="barra-progreso" id="barraProg"></div>
+
+<script>
+const BD = {
+  "Ej. 55: Hormiga en Cubo - Camino Mínimo": { pasos: [
+    { tex: "\\text{\\color{#f59e0b}EJERCICIO 55: Hormiga de A a B en cubo}", type:"def" },
+    { tex: "\\text{Cubo de arista } a = 2", graph: { type:"cubo", arista:2 } },
+    { tex: "A = \\text{vértice superior}, \\quad B = \\text{centro de cara lateral}" },
+    { tex: "\\text{\\color{#38bdf8}Clave: La hormiga camina por la SUPERFICIE}" },
+    { tex: "\\text{No puede atravesar el cubo, debe rodearlo}" },
+    { tex: "\\text{\\color{#f59e0b}Estrategia: Desplegar el cubo en el plano}" },
+    { tex: "\\text{Al desplegar, el camino más corto es una LÍNEA RECTA}" },
+    { tex: "\\text{\\color{#38bdf8}Paso 1: Analizar el despliegue}", graph: { type:"despliegue" } },
+    { tex: "B \\text{ está a mitad de altura: } \\frac{2}{2} = 1" },
+    { tex: "\\text{Horizontal: } 2 + 1 = 3 \\quad ; \\quad \\text{Vertical: } 1" },
+    { tex: "\\text{\\color{#38bdf8}Paso 2: Aplicar Pitágoras}" },
+    { tex: "d^2 = 3^2 + 1^2 = 9 + 1 = 10" },
+    { tex: "\\text{\\color{#4ade80}Respuesta: D) } \\sqrt{10}" }
+  ]},
+  "Ej. 56: Triángulo - Segmento DE (Geometría)": { pasos: [
+    { tex: "\\text{\\color{#f59e0b}EJERCICIO 56: Triángulo ABC con altura CD}", type:"def" },
+    { tex: "\\text{E es punto medio de } AB, \\quad CD \\perp AB", graph: { type:"triangulo", AC:6, BC:8 } },
+    { tex: "AC = 6 \\text{ cm}, \\quad BC = 8 \\text{ cm} \\quad \\Rightarrow \\quad AB = 10 \\text{ cm}" },
+    { tex: "\\text{Paso 1: } AE = \\frac{10}{2} = 5 \\text{ cm}" },
+    { tex: "\\text{Paso 2: Área } = \\frac{6 \\cdot 8}{2} = 24 \\quad \\Rightarrow \\quad CD = 4,8 \\text{ cm}", graph: { type:"triangulo_con_altura" } },
+    { tex: "\\text{Paso 3: } AD^2 = 6^2 - 4,8^2 = 12,96 \\quad \\Rightarrow \\quad AD = 3,6 \\text{ cm}" },
+    { tex: "\\text{Paso 4: } DE = 5 - 3,6 = 1,4 \\text{ cm}", graph: { type:"triangulo_con_DE" } },
+    { tex: "\\text{\\color{#4ade80}Respuesta: A) } 1,4 \\text{ cm}" }
+  ]},
+  "Ej. 57: Vectores - Operación 4ā - 2b̄": { pasos: [
+    { tex: "\\text{\\color{#f59e0b}EJERCICIO 57: Vectores en el plano}", type:"def" },
+    { tex: "\\vec{a} = \\left(\\frac{3}{2},\\, 6\\right), \\quad \\vec{b} = \\left(-\\frac{3}{2},\\, -6\\right)", graph: { type:"vectores", a:[1.5,6], b:[-1.5,-6] } },
+    { tex: "4\\vec{a} = (6,\\, 24) \\quad ; \\quad 2\\vec{b} = (-3,\\, -12)" },
+    { tex: "4\\vec{a} - 2\\vec{b} = (6 - (-3),\\, 24 - (-12)) = (9,\\, 36)", graph: { type:"resultado_vector", res:[9,36] } },
+    { tex: "\\text{\\color{#4ade80}Respuesta: B) } (9,\\, 36)" }
+  ]},
+  "Ej. 59: Estadística - Tabla de Frecuencias": { pasos: [
+    { tex: "\\text{\\color{#f59e0b}EJERCICIO 59: Puntajes en Intervalos}", type:"def" },
+    { tex: "\\text{Análisis de frecuencias agrupadas}", graph: { type:"tabla_freq_59" } },
+    { tex: "\\text{Total de alumnos: } 2 + 4 + 7 + 15 + 17 = 45" },
+    { tex: "\\text{\\color{#ef4444}C) FALSA: Con datos agrupados no se sabe la Moda exacta}", graph: { type:"barras_59" } },
+    { tex: "\\text{\\color{#4ade80}Respuesta: C) Es la afirmación FALSA}" }
+  ]},
+  "Ej. 61: Probabilidad - 3 Cajas de Bolitas": { pasos: [
+    { tex: "\\text{\\color{#f59e0b}EJERCICIO 61: Tres Cajas de Bolitas}", type:"def" },
+    { tex: "\\text{3 cajas con 1 Azul + 1 Blanca cada una}", graph: { type:"cajas_61" } },
+    { tex: "\\text{Casos totales: } 2^3 = 8" },
+    { tex: "\\text{Casos favorables (2A, 1B): AAB, ABA, BAA (3 casos)}" },
+    { tex: "P = \\frac{3}{8}", graph: { type:"resultado_prob", texto:"P = 3/8" } },
+    { tex: "\\text{\\color{#4ade80}Respuesta: B) } \\frac{3}{8}" }
+  ]},
+  "Ej. 65: Probabilidad Total - Ciudad del Sur": { pasos: [
+    { tex: "\\text{\\color{#f59e0b}EJERCICIO 65: Lluvia y Uso de Vehículo}", type:"def" },
+    { tex: "P(L) = \\frac{1}{4}, \\quad P(V|L) = \\frac{3}{5}, \\quad P(V|\\bar{L}) = \\frac{3}{10}" },
+    { tex: "\\text{Diagrama de Árbol de Decisiones}", graph: { type:"arbol_65" } },
+    { tex: "P(L \\cap V) = \\frac{1}{4} \\cdot \\frac{3}{5} = \\frac{3}{20} = \\frac{6}{40}" },
+    { tex: "P(\\bar{L} \\cap V) = \\frac{3}{4} \\cdot \\frac{3}{10} = \\frac{9}{40}" },
+    { tex: "P(V) = \\frac{6}{40} + \\frac{9}{40} = \\frac{15}{40} = \\frac{3}{8}" },
+    { tex: "\\text{\\color{#4ade80}Respuesta: A) } \\frac{3}{8}" }
+  ]}
+};
+
+let ejClaves = Object.keys(BD);
+let ejActual = ejClaves[0];
+let pasoActual = 0;
+
+function initApp() {
+  const select = document.getElementById('ejercicioSelect');
+  select.innerHTML = '';
+  ejClaves.forEach(clave => {
+    let opt = document.createElement('option');
+    opt.value = clave;
+    opt.textContent = clave;
+    select.appendChild(opt);
+  });
+  cargarEjercicio(ejClaves[0]);
+}
+
+function cambiarEjercicio(val) {
+  cargarEjercicio(val);
+}
+
+function cargarEjercicio(clave) {
+  ejActual = clave;
+  pasoActual = 0;
+  renderMath();
+}
+
+function renderMath() {
+  const panel = document.getElementById('mathPanel');
+  panel.innerHTML = '';
+  const pasos = BD[ejActual].pasos;
+  
+  pasos.forEach((p, idx) => {
+    if (idx <= pasoActual) {
+      let div = document.createElement('div');
+      div.className = 'linea-matematica';
+      if (idx === 0) div.classList.add('enunciado');
+      if (idx === pasoActual) div.classList.add('es-activo');
+      if (p.tex.includes('Respuesta:')) div.classList.add('es-resultado');
+      
+      try {
+        katex.render(p.tex, div, { displayMode: true, throwOnError: false });
+      } catch(e) {
+        div.textContent = p.tex;
+      }
+      panel.appendChild(div);
+    }
+  });
+
+  document.getElementById('numActual').textContent = pasoActual + 1;
+  document.getElementById('numTotal').textContent = pasos.length;
+  
+  let pct = ((pasoActual + 1) / pasos.length) * 100;
+  document.getElementById('barraProg').style.width = pct + '%';
+
+  document.getElementById('btnPrev').disabled = (pasoActual === 0);
+  document.getElementById('btnNext').disabled = (pasoActual === pasos.length - 1);
+
+  // Renderizar gráfico
+  const currentStepData = pasos[pasoActual];
+  renderGraph(currentStepData.graph);
+
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function siguiente() {
+  const pasos = BD[ejActual].pasos;
+  if (pasoActual < pasos.length - 1) {
+    pasoActual++;
+    renderMath();
+  }
+}
+
+function anterior() {
+  if (pasoActual > 0) {
+    pasoActual--;
+    renderMath();
+  }
+}
+
+function togglePanel(event) {
+  event.stopPropagation();
+  const rightPanel = document.getElementById('rightPanel');
+  const mathPanel = document.getElementById('mathPanel');
+  rightPanel.classList.toggle('hidden');
+  mathPanel.classList.toggle('full');
+}
+
+// MOTOR SVG - RENDERGRAPH
+function renderGraph(config) {
+  const svg = document.getElementById('canvas-svg'); 
+  const rightPanel = document.getElementById('rightPanel');
+  const mathPanel = document.getElementById('mathPanel');
+  
+  svg.innerHTML = '';
+  
+  if (!config) {
+    rightPanel.classList.add('hidden');
+    mathPanel.classList.add('full');
+    return;
+  } else {
+    rightPanel.classList.remove('hidden');
+    mathPanel.classList.remove('full');
+  }
+
+  svg.innerHTML += `<rect x="0" y="0" width="400" height="400" fill="#0a0e14"/>`;
+
+  // 1. CUBO
+  if (config.type === 'cubo') {
+    const offset = 80, size = 120;
+    svg.innerHTML += `<rect x="${offset}" y="${offset}" width="${size}" height="${size}" fill="rgba(56,189,248,0.1)" stroke="var(--paso-activo)" stroke-width="2"/>`;
+    svg.innerHTML += `<polygon points="${offset},${offset} ${offset+size},${offset} ${offset+size+40},${offset-30} ${offset+40},${offset-30}" fill="rgba(203,213,225,0.1)" stroke="var(--paso-viejo)" stroke-width="2"/>`;
+    svg.innerHTML += `<polygon points="${offset+size},${offset} ${offset+size+size},${offset+size} ${offset+size+size+40},${offset+size-30} ${offset+size+40},${offset-30}" fill="rgba(245,158,11,0.2)" stroke="var(--enunciado)" stroke-width="2"/>`;
+    svg.innerHTML += `<circle cx="${offset+40}" cy="${offset-30}" r="6" fill="var(--resultado)"/>`;
+    svg.innerHTML += `<text x="${offset+40}" y="${offset-42}" fill="var(--resultado)" font-size="16" font-weight="900" text-anchor="middle">A</text>`;
+    svg.innerHTML += `<circle cx="${offset+size+size/2+20}" cy="${offset+size/2-15}" r="6" fill="var(--enunciado)"/>`;
+    svg.innerHTML += `<text x="${offset+size+size/2+40}" y="${offset+size/2-10}" fill="var(--enunciado)" font-size="16" font-weight="900">B</text>`;
+    return;
+  }
+
+  // 2. DESPLIEGUE
+  if (config.type === 'despliegue') {
+    const x1 = 80, y1 = 120, size = 100;
+    svg.innerHTML += `<rect x="${x1}" y="${y1}" width="${size}" height="${size}" fill="rgba(56,189,248,0.15)" stroke="var(--paso-activo)" stroke-width="2"/>`;
+    svg.innerHTML += `<rect x="${x1+size}" y="${y1}" width="${size}" height="${size}" fill="rgba(245,158,11,0.15)" stroke="var(--enunciado)" stroke-width="2"/>`;
+    svg.innerHTML += `<circle cx="${x1}" cy="${y1}" r="6" fill="var(--resultado)"/>`;
+    svg.innerHTML += `<circle cx="${x1+size+size/2}" cy="${y1+size/2}" r="6" fill="var(--enunciado)"/>`;
+    svg.innerHTML += `<line x1="${x1}" y1="${y1}" x2="${x1+size+size/2}" y2="${y1+size/2}" stroke="var(--resultado)" stroke-width="3" stroke-dasharray="5,3"/>`;
+    return;
+  }
+
+  // 3. TRIÁNGULO
+  if (config.type.startsWith('triangulo')) {
+    const Ax = 60, Ay = 120, Bx = 340, By = 120, Cx = 160.8, Cy = 254.4, Dx = 160.8, Dy = 120, Ex = 200, Ey = 120;
+    svg.innerHTML += `<polygon points="${Ax},${Ay} ${Bx},${By} ${Cx},${Cy}" fill="rgba(56,189,248,0.08)" stroke="var(--paso-activo)" stroke-width="2.5"/>`;
+    if (config.type === 'triangulo_con_altura' || config.type === 'triangulo_con_DE') {
+      svg.innerHTML += `<line x1="${Dx}" y1="${Dy}" x2="${Cx}" y2="${Cy}" stroke="var(--enunciado)" stroke-width="2.5" stroke-dasharray="6,3"/>`;
+    }
+    if (config.type === 'triangulo_con_DE') {
+      svg.innerHTML += `<line x1="${Dx}" y1="${Dy}" x2="${Ex}" y2="${Ey}" stroke="var(--resultado)" stroke-width="6"/>`;
+      svg.innerHTML += `<text x="${(Dx+Ex)/2}" y="${Dy-15}" fill="var(--resultado)" font-size="14" font-weight="900" text-anchor="middle">DE = 1,4</text>`;
+    }
+    return;
+  }
+
+  // 4. VECTORES
+  if (config.type === 'vectores' || config.type === 'resultado_vector') {
+    const ox = 200, oy = 200;
+    svg.innerHTML += `<line x1="20" y1="${oy}" x2="380" y2="${oy}" stroke="#334155" stroke-width="2"/>`;
+    svg.innerHTML += `<line x1="${ox}" y1="20" x2="${ox}" y2="380" stroke="#334155" stroke-width="2"/>`;
+    if (config.type === 'vectores') {
+      svg.innerHTML += `<line x1="${ox}" y1="${oy}" x2="${ox+20}" y2="${oy-80}" stroke="var(--paso-activo)" stroke-width="3"/>`;
+      svg.innerHTML += `<line x1="${ox}" y1="${oy}" x2="${ox-20}" y2="${oy+80}" stroke="var(--enunciado)" stroke-width="3"/>`;
+    } else {
+      svg.innerHTML += `<line x1="${ox}" y1="${oy}" x2="${ox+120}" y2="${oy-160}" stroke="var(--resultado)" stroke-width="4"/>`;
+      svg.innerHTML += `<text x="${ox+120}" y="${oy-170}" fill="var(--resultado)" font-size="14" font-weight="900">(9, 36)</text>`;
+    }
+    return;
+  }
+
+  // 5. TABLA FRECUENCIAS & BARRAS
+  if (config.type === 'tabla_freq_59' || config.type === 'barras_59') {
+    svg.innerHTML += `<text x="200" y="40" fill="var(--enunciado)" font-size="16" font-weight="900" text-anchor="middle">Histograma de Frecuencias</text>`;
+    const h = [20, 40, 70, 150, 170];
+    h.forEach((val, i) => {
+      let x = 60 + i * 60;
+      let barH = val * 1.5;
+      let color = (i === 4 && config.type === 'barras_59') ? 'var(--resultado)' : 'var(--paso-activo)';
+      svg.innerHTML += `<rect x="${x}" y="${320 - barH}" width="45" height="${barH}" fill="${color}" opacity="0.8"/>`;
+      svg.innerHTML += `<text x="${x+22}" y="${315 - barH}" fill="#fff" font-size="12" text-anchor="middle">${val/10}</text>`;
+    });
+    return;
+  }
+
+  // 6. CAJAS & PROBABILIDAD
+  if (config.type === 'cajas_61') {
+    [80, 180, 280].forEach((x, i) => {
+      svg.innerHTML += `<rect x="${x}" y="150" width="70" height="70" fill="none" stroke="var(--paso-activo)" stroke-width="2" rx="8"/>`;
+      svg.innerHTML += `<circle cx="${x+25}" cy="185" r="12" fill="#38bdf8"/>`;
+      svg.innerHTML += `<circle cx="${x+48}" cy="185" r="12" fill="#f8fafc"/>`;
+      svg.innerHTML += `<text x="${x+35}" y="135" fill="#64748b" font-size="12" text-anchor="middle">Caja ${i+1}</text>`;
+    });
+    return;
+  }
+
+  // 7. ÁRBOL DE PROBABILIDAD
+  if (config.type === 'arbol_65') {
+    svg.innerHTML += `<text x="200" y="40" fill="var(--enunciado)" font-size="16" font-weight="900" text-anchor="middle">Diagrama de Árbol (Lluvia vs Vehículo)</text>`;
+    svg.innerHTML += `<line x1="80" y1="200" x2="180" y2="120" stroke="var(--paso-activo)" stroke-width="2"/>`;
+    svg.innerHTML += `<line x1="80" y1="200" x2="180" y2="280" stroke="var(--paso-activo)" stroke-width="2"/>`;
+    svg.innerHTML += `<text x="${120}" y="${150}" fill="#cbd5e1" font-size="12">1/4 (L)</text>`;
+    svg.innerHTML += `<text x="${120}" y="${260}" fill="#cbd5e1" font-size="12">3/4 (No L)</text>`;
+    
+    svg.innerHTML += `<line x1="180" y1="120" x2="280" y2="80" stroke="var(--resultado)" stroke-width="3"/>`;
+    svg.innerHTML += `<text x="310" y="85" fill="var(--resultado)" font-size="12" font-weight="900">Vehículo (6/40)</text>`;
+
+    svg.innerHTML += `<line x1="180" y1="280" x2="280" y2="240" stroke="var(--resultado)" stroke-width="3"/>`;
+    svg.innerHTML += `<text x="310" y="245" fill="var(--resultado)" font-size="12" font-weight="900">Vehículo (9/40)</text>`;
+    return;
+  }
+
+  // 8. RESULTADO GENÉRICO
+  if (config.type === 'resultado_prob') {
+    svg.innerHTML += `<circle cx="200" cy="200" r="80" fill="rgba(74,222,128,0.1)" stroke="var(--resultado)" stroke-width="3"/>`;
+    svg.innerHTML += `<text x="200" y="210" fill="var(--resultado)" font-size="28" font-weight="900" text-anchor="middle">${config.texto || ''}</text>`;
+    return;
+  }
+}
+
+window.onload = initApp;
+</script>
+</body>
+</html>
